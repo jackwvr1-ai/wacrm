@@ -12,12 +12,37 @@ import {
   validateTriggerForActivation,
 } from '@/lib/automations/validate'
 
-async function requireUser() {
+async function requireOwnership(
+  automationId: string,
+): Promise<
+  | {
+      ok: true
+      userId: string
+      supabase: Awaited<ReturnType<typeof createClient>>
+    }
+  | { ok: false; status: number; body: { error: string } }
+> {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  return user
+  if (!user) {
+    return { ok: false, status: 401, body: { error: 'Unauthorized' } }
+  }
+  // RLS scopes this to the caller's account (automations_select =
+  // is_account_member(account_id)) — an automation belonging to another
+  // account returns null (404 below). Any member of the same account
+  // passes, matching the underlying policy: account membership, not
+  // row authorship.
+  const { data: automation } = await supabase
+    .from('automations')
+    .select('id')
+    .eq('id', automationId)
+    .maybeSingle()
+  if (!automation) {
+    return { ok: false, status: 404, body: { error: 'Not found' } }
+  }
+  return { ok: true, userId: user.id, supabase }
 }
 
 export async function GET(
@@ -25,15 +50,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
-  const user = await requireUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const guard = await requireOwnership(id)
+  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status })
 
   const admin = supabaseAdmin()
   const { data: automation, error } = await admin
     .from('automations')
     .select('*')
     .eq('id', id)
-    .eq('user_id', user.id)
     .maybeSingle()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -58,22 +82,22 @@ export async function PATCH(
     return toErrorResponse(err)
   }
 
-  const user = await requireUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const guard = await requireOwnership(id)
+  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status })
 
   const body = await request.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
 
   const admin = supabaseAdmin()
 
-  // Ownership check before we touch anything. Load the fields we need
-  // to compute the post-patch "effective" state for validation.
+  // Load the fields we need to compute the post-patch "effective" state
+  // for validation. Ownership was already confirmed by requireOwnership.
   const { data: existing } = await admin
     .from('automations')
-    .select('id, user_id, is_active, trigger_type, trigger_config')
+    .select('id, is_active, trigger_type, trigger_config')
     .eq('id', id)
     .maybeSingle()
-  if (!existing || existing.user_id !== user.id) {
+  if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
@@ -145,14 +169,13 @@ export async function DELETE(
     return toErrorResponse(err)
   }
 
-  const user = await requireUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const guard = await requireOwnership(id)
+  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status })
 
   const { error } = await supabaseAdmin()
     .from('automations')
     .delete()
     .eq('id', id)
-    .eq('user_id', user.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

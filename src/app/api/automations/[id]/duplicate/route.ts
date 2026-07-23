@@ -24,12 +24,23 @@ export async function POST(
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // RLS scopes this to the caller's account (automations_select =
+  // is_account_member(account_id)) — an automation belonging to another
+  // account returns null (404 below). Any member of the same account
+  // passes, matching the underlying policy: account membership, not
+  // row authorship.
+  const { data: owned } = await supabase
+    .from('automations')
+    .select('id')
+    .eq('id', id)
+    .maybeSingle()
+  if (!owned) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const admin = supabaseAdmin()
   const { data: original, error: origErr } = await admin
     .from('automations')
     .select('*')
     .eq('id', id)
-    .eq('user_id', user.id)
     .maybeSingle()
   if (origErr) return NextResponse.json({ error: origErr.message }, { status: 500 })
   if (!original) return NextResponse.json({ error: 'Not found' }, { status: 404 })
