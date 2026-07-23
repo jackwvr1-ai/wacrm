@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import {
   registerPhoneNumber,
   subscribeWabaToApp,
@@ -158,32 +159,27 @@ export async function GET() {
 }
 
 /**
- * POST /api/whatsapp/config
+ * POST /api/whatsapp/config  (admin+)
  *
- * Saves or updates the WhatsApp config for the authenticated user.
+ * Saves or updates the WhatsApp config for the caller's account.
  * Verifies credentials with Meta first, then encrypts and stores.
+ *
+ * The underlying RLS policy (`whatsapp_config_insert`/`_update`) already
+ * requires admin+, but that's a single layer of defense — this explicit
+ * check adds a second, in the route itself, matching the pattern used by
+ * `/api/ai/config` and other admin-only routes (current-state.md ficha
+ * 2.11, recomendación #3).
  */
 export async function POST(request: Request) {
+  let ctx
   try {
-    const supabase = await createClient()
+    ctx = await requireRole('admin')
+  } catch (err) {
+    return toErrorResponse(err)
+  }
+  const { supabase, userId, accountId } = ctx
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const accountId = await resolveAccountId(supabase, user.id)
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 },
-      )
-    }
-
+  try {
     const body = await request.json()
     const { phone_number_id, waba_id, access_token, verify_token, pin } = body
 
@@ -388,7 +384,7 @@ export async function POST(request: Request) {
         .from('whatsapp_config')
         .insert({
           account_id: accountId,
-          user_id: user.id,
+          user_id: userId,
           ...baseRow,
         })
 
@@ -432,33 +428,25 @@ export async function POST(request: Request) {
 }
 
 /**
- * DELETE /api/whatsapp/config
+ * DELETE /api/whatsapp/config  (admin+)
  *
- * Removes the authenticated user's WhatsApp configuration row.
+ * Removes the caller's account's WhatsApp configuration row.
  * Used by the "Reset Configuration" button to recover from a corrupted
  * encrypted token (mismatched ENCRYPTION_KEY across environments).
+ *
+ * See the POST handler above for why this duplicates the `admin+` RLS
+ * check explicitly in TypeScript.
  */
 export async function DELETE() {
+  let ctx
   try {
-    const supabase = await createClient()
+    ctx = await requireRole('admin')
+  } catch (err) {
+    return toErrorResponse(err)
+  }
+  const { supabase, accountId } = ctx
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const accountId = await resolveAccountId(supabase, user.id)
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 },
-      )
-    }
-
+  try {
     const { error: deleteError } = await supabase
       .from('whatsapp_config')
       .delete()
