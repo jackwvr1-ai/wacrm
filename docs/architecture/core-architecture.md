@@ -1,8 +1,8 @@
 # Arquitectura del Núcleo — Modelo Conceptual
 
-> **Estado:** Etapa 0 — solo documentación. Nada de lo aquí descrito está implementado.
-> **Propósito:** definir el modelo conceptual de la plataforma omnicanal futura, para que las decisiones de Fase 1 no generen deuda incompatible con esta visión.
-> **Esto NO es una migración.** No hay cambios de base de datos, APIs ni comportamiento asociados a este documento.
+> **Estado:** arquitectura conceptual vigente. El proyecto superó la Etapa 0 (solo-documentación) y las bases de la Fase 1: los flujos esenciales del Inbox están operativos. El sistema entra en **Fase 3 — transformación en un SaaS multiempresa operable por clientes reales.** Ese avance **no** activa por sí mismo la migración omnicanal grande (regla 1.10): la Fase 3 no agrega canales nuevos todavía.
+> **Propósito:** este documento sigue siendo la **referencia arquitectónica permanente** (la "constitución técnica"). Define principios y entidades, no el plan operativo de ninguna fase. La ejecución específica de la etapa actual vive en **`phase-3-saas-instructions.md`**; el estado real y verificado del sistema quedará documentado en **`current-state.md`**, que se creará durante la Fase 3.0B.
+> **Lo que NO cambia con la Fase 3:** las decisiones abiertas (§5.2), el modelo comercial de mensajes (§5.4) y las preguntas previas a la primera migración (§5.5) **siguen abiertas**. La Fase 3 las hereda; no las resuelve silenciosamente. Cualquier decisión que las cierre deberá hacerse de forma explícita y justificada contra este documento.
 
 ---
 

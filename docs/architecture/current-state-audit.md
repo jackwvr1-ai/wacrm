@@ -1,3 +1,9 @@
+> **⚠️ Nota histórica (añadida en Fase 3.0A).**
+> Esta auditoría es una **fotografía del estado del proyecto al inicio de su evolución**, obtenida por lectura directa del código en el momento indicado. **No describe necesariamente el estado operativo vigente.** Desde su creación, varios flujos —en particular el Inbox— han evolucionado.
+> Este documento **no debe reescribirse** para reflejar el estado actual: su valor es ser el registro factual que fundamentó las decisiones de arquitectura. Para el estado operativo real y verificado del sistema, consultar **`current-state.md`** una vez completada la Fase 3.0B. Para la prioridad y el plan de la etapa vigente, consultar **`phase-3-saas-instructions.md`**.
+
+---
+
 # Auditoría del Estado Actual — WACRM
 
 > **Estado:** Etapa 0 — solo documentación.
