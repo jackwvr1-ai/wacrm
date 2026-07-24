@@ -222,21 +222,26 @@ También `src/app/api/whatsapp/config/verify-registration/route.ts` (no leído l
 
 ### 1.10 Asignación de agentes
 
-**Estado:** IMPLEMENTADO SIN VALIDACIÓN SUFICIENTE
-**Confianza:** Media
+**Estado:** RESUELTA (2026-07-23)
+**Confianza:** Alta — validación empírica contra base real, no solo lectura estática.
 
 **Evidencia:**
 - No existe una ruta `/api/*` para asignar agentes. La asignación ocurre enteramente client-side: `src/components/inbox/message-thread.tsx` líneas 822-836 — `supabase.from('conversations').update({ assigned_agent_id: agentId }).eq('id', conversation.id)` usando el cliente RLS del navegador directamente.
-- RLS: la política `conversations_update` (migración 017, línea 416) es `USING (is_account_member(account_id, 'agent'))` — **sin cláusula `WITH CHECK` que valide que el nuevo `assigned_agent_id` sea también miembro de la misma cuenta.**
-- `src/lib/automations/engine.ts` (paso `assign_conversation`, líneas 450-472) sí acota `agentId` a un perfil de la propia cuenta cuando usa `mode: 'round_robin'` (`.eq('account_id', ...)`), pero si el step usa `cfg.agent_id` fijo (modo manual), ese valor no se revalida contra la membresía de la cuenta en el momento de ejecutar el step.
+- RLS: la política `conversations_update` **ahora tiene `WITH CHECK`** (migración `036_conversations_update_with_check.sql`) que exige que `assigned_agent_id` sea `NULL`, no haya cambiado respecto al valor previo de la fila, o pertenezca a la misma cuenta (`EXISTS` contra `profiles`) — cierra el hueco descrito originalmente en esta ficha.
+- `src/lib/automations/engine.ts` (paso `assign_conversation`, líneas 450-472) sí acota `agentId` a un perfil de la propia cuenta cuando usa `mode: 'round_robin'` (`.eq('account_id', ...)`), pero si el step usa `cfg.agent_id` fijo (modo manual), ese valor no se revalida contra la membresía de la cuenta en el momento de ejecutar el step — sin cambios por esta migración (el motor corre como `service_role`, que bypassea RLS).
 
 **Verificaciones realizadas:**
 ✓ Confirmado por lectura que ninguna ruta server-side interviene en la asignación manual desde el inbox — es una escritura directa de cliente contra Supabase.
-✓ Confirmado que la política RLS no tiene `WITH CHECK` sobre el valor de `assigned_agent_id`.
+✓ Migración 036 validada empíricamente en `wacrm-staging` (ref `zkrjdsqkfokzoifslfve`), las 36 migraciones aplicadas desde cero, seed `supabase/seed/staging-036-validation.sql` (2 cuentas, 4 usuarios, 1 contacto, 2 conversaciones — una huérfana vía la RPC real `remove_account_member`). Las 4 validaciones SQL ejecutables corrieron como ROLE `authenticated` (no `postgres`, para no bypassear RLS):
+  1. Asignar a un compañero de la misma cuenta → ÉXITO (`UPDATE 1`).
+  2. Asignar a un usuario de otra cuenta → FALLO con `ERROR 42501` "new row violates row-level security policy for table conversations".
+  3. Desasignar (`assigned_agent_id = NULL`) → ÉXITO.
+  4. Update no relacionado (`unread_count = 0`) sobre una conversación YA huérfana, sin tocar `assigned_agent_id` → ÉXITO — confirma que la subquery auto-referencial funciona y que no se congelan las conversaciones de un agente removido.
+  5. (`service_role`) no es verificable por SQL — es verificación de código, ya cubierta en la auditoría original.
+✓ Aplicada en producción (ref `cgwrlkrkesjzrxtuvcfh`), 2026-07-23, dentro de una transacción `BEGIN`/`COMMIT`, verificada con `SELECT policyname, cmd, qual IS NOT NULL, with_check IS NOT NULL FROM pg_policies WHERE tablename='conversations' AND policyname='conversations_update'` → `conversations_update | UPDATE | true | true`.
 
 **Pendientes:**
-- **No se pudo determinar si la UI restringe la lista de agentes asignables a los miembros de la cuenta** de forma suficientemente estricta como para que este hueco sea inalcanzable en la práctica (la lista se puebla de `profiles` vía `/api/account/members`, que sí es account-scoped) — pero un cliente que hable directo con la API REST de Supabase (sin pasar por la UI) podría, en teoría, asignar una conversación a cualquier `user_id` válido de `auth.users`, sin importar su cuenta. **No se intentó explotar esto**; se registra como hallazgo de diseño, no como vulnerabilidad confirmada por prueba.
-- No hay test automático de este flujo (ni unitario ni de integración).
+- Ninguno sobre el hueco original. El modo `round_robin`/`cfg.agent_id` fijo de `assign_conversation` sigue sin revalidación de membresía en el momento de ejecutar el step (corre como `service_role`), pero es un caso distinto al cubierto por esta ficha.
 
 ---
 
@@ -574,7 +579,7 @@ Veredicto: NO VULNERABLE HOY (sin ruta de ataque conocida) — riesgo latente, n
 
 **Media:**
 - **Meta-send fragmentado**: `automations/meta-send.ts`, `flows/meta-send.ts` y `ai/auto-reply.ts` cada uno tiene su propio punto de contacto directo con Meta, en vez de pasar por el core compartido `sendMessageToConversation` que usan el composer del dashboard y la API pública v1. Confirmado que este hallazgo del audit histórico §7 sigue vigente sin cambios en este commit.
-- **Asignación de agentes sin segunda validación** (ficha 1.10): la política RLS `conversations_update` no tiene `WITH CHECK` sobre `assigned_agent_id` — nada a nivel de base de datos impide asignar una conversación a un `user_id` que no sea miembro de la cuenta. Mitigado en la práctica porque la única superficie conocida (el inbox) puebla la lista de agentes desde `/api/account/members` (account-scoped), pero no hay una barrera estructural.
+- ~~**Asignación de agentes sin segunda validación**~~ (ficha 1.10) — **RESUELTO (2026-07-23).** La política RLS `conversations_update` ahora tiene `WITH CHECK` (migración 036), validada empíricamente en `wacrm-staging` y aplicada en producción. Ver ficha 1.10 para el detalle.
 - **`remove_account_member` no limpia `conversations.assigned_agent_id`** (`018_account_member_rpcs.sql`, líneas 127-201). La RPC reubica al usuario removido en una cuenta personal nueva (líneas 185-197: `INSERT INTO accounts` + `UPDATE profiles SET account_id = v_new_account_id`), pero nunca toca las conversaciones que tenía asignadas — quedan con un `assigned_agent_id` que ya no es miembro de la cuenta (una asignación huérfana). `assigned_agent_id` es un `UUID` sin foreign key (`001_initial_schema.sql:145`), así que no hay ningún error ni constraint que lo señale. No es una fuga entre cuentas hoy: `conversations_select` filtra por `is_account_member(account_id)` contra el `account_id` *de la conversación*, y el usuario removido pasó a otra cuenta, así que no puede volver a leerla. El impacto concreto es de correctness/UX (la conversación queda con un asignado fantasma hasta que alguien la reasigna o desasigna a mano) y se vuelve relevante para la migración 036 (Fase 3.1-C2): el diseño de esa migración solo revalida membresía de `assigned_agent_id` cuando el valor cambia, precisamente para que estas conversaciones huérfanas no queden bloqueadas para updates no relacionados (marcar leído, cambiar status) una vez que exista un `WITH CHECK`.
 - **Comparación de secreto no constante-time en `automations/cron`** (`!==` en vez de `crypto.timingSafeEqual`), inconsistente con el mismo mecanismo en `flows/cron` (que sí usa comparación segura). Riesgo teórico (timing attack sobre HTTP es difícil), pero es una inconsistencia entre dos rutas gemelas que deberían compartir el mismo estándar.
 - **Tres copias casi idénticas de la factory `supabaseAdmin()`** (`src/lib/ai/admin-client.ts`, `src/lib/automations/admin-client.ts`, `src/lib/flows/admin-client.ts`) en vez de una sola compartida.
@@ -596,7 +601,7 @@ Veredicto: NO VULNERABLE HOY (sin ruta de ataque conocida) — riesgo latente, n
 1. **Corregir `app/api/automations/[id]` y `app/api/automations/[id]/duplicate` para filtrar por `account_id`** (o replicar el patrón de `flows/[id]/route.ts`: verificar pertenencia con el cliente RLS antes de mutar con `supabaseAdmin()`). Justificado por las fichas 2.3 y 2.4 — es la única casilla ❌ confirmada en las 26 rutas auditadas, y el propio documento de instrucciones de esta fase la señala como el patrón de riesgo #1 a cerrar antes de admitir clientes reales.
 2. **Escribir al menos un test de integración por RPC crítica** (`set_member_role`, `remove_account_member`, `transfer_account_ownership`, `peek_invitation`, `redeem_invitation`) contra una base de datos real (o un entorno Supabase local), y para el flujo `requireApiKey` de la API pública. Justificado por las fichas 1.3, 1.5 y 2.13 — hoy la única verificación de estas piezas críticas de aislamiento es lectura estática de SQL/TS.
 3. **Añadir defensa en profundidad explícita (`requireRole('admin')`) a `app/api/whatsapp/config`** para que el control de rol no dependa únicamente de RLS. Justificado por la ficha 2.11.
-4. **Añadir un `WITH CHECK` a la política RLS `conversations_update`** que valide que `assigned_agent_id` (cuando no es NULL) sea miembro de la misma cuenta. Justificado por la ficha 1.10.
+4. ~~Añadir un `WITH CHECK` a la política RLS `conversations_update` que valide que `assigned_agent_id` (cuando no es NULL) sea miembro de la misma cuenta~~ — **RESUELTO (2026-07-23).** Migración 036, validada empíricamente en `wacrm-staging` y aplicada en producción. Justificado por la ficha 1.10.
 5. **Decidir explícitamente si existirá un flujo de borrado de organización** y, si sí, implementarlo (hoy `canDeleteAccount` es un predicate sin consumidor); si no, retirar el predicate muerto. Justificado por la ficha 1.2.
 6. **Conectar `PATCH /api/account` a la UI de Settings** (o retirar el endpoint si ya no es necesario). Justificado por la ficha 1.12.
 7. **Unificar el envío de mensajes** de `automations`/`flows`/`ai` sobre el core compartido `sendMessageToConversation`, tal como recomienda la regla 3 de `core-architecture.md` ("todo envío futuro debe pasar por una única capa neutral de mensajería"). Justificado por la ficha 1.7 y el hallazgo histórico §7, aún vigente.
@@ -609,7 +614,7 @@ Veredicto: NO VULNERABLE HOY (sin ruta de ataque conocida) — riesgo latente, n
 
 ## 5. Limitaciones de la auditoría
 
-- No se probaron integraciones externas reales (Meta/WhatsApp en vivo, Supabase en producción) — toda la verificación es lectura de código + `npm test` (mocks/unitarios).
+- No se probaron integraciones externas reales (Meta/WhatsApp en vivo) — esa verificación sigue siendo lectura de código + `npm test` (mocks/unitarios). Para RLS/SQL, esto ya no es enteramente cierto: desde el 2026-07-23 existe un entorno de staging real, `wacrm-staging` (ref `zkrjdsqkfokzoifslfve`), con las 36 migraciones aplicadas desde cero, y la migración 036 (`WITH CHECK` en `conversations_update`, ficha 1.10) fue validada ahí contra una base real como ROLE `authenticated`, no solo por lectura estática. El resto de las fichas de este documento sigue sin validación empírica — `wacrm-staging` no fue usado para re-verificar ninguna otra pieza.
 - No se simuló carga concurrente ni acceso simultáneo de varias organizaciones sobre una base de datos real.
 - No se verificó el comportamiento en el entorno de producción (Vercel/Hostinger), incluyendo si `ALLOWED_INVITE_HOSTS`, `META_APP_SECRET`, `AUTOMATION_CRON_SECRET` y `SUPABASE_SERVICE_ROLE_KEY` están configuradas y protegidas correctamente ahí — son variables de entorno fuera del alcance de una auditoría de código estático.
 - La confianza "Alta" depende de las pruebas disponibles en el repo (628 tests, todos unitarios/mockeados); su ausencia en un área (ninguna prueba de las RPCs SQL, ninguna prueba HTTP de `/api/v1/*`) limita la certeza a lectura estática, marcada explícitamente como confianza Media en esas fichas.
