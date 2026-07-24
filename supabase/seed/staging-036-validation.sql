@@ -111,6 +111,7 @@ WHERE id IN (
 
 DROP TABLE IF EXISTS seed_ids;
 CREATE TEMP TABLE seed_ids (label TEXT PRIMARY KEY, id UUID NOT NULL);
+GRANT ALL ON seed_ids TO authenticated;
 
 -- ------------------------------------------------------------
 -- 1. auth.users — dispara handle_new_user (017_account_sharing.sql:659-689),
