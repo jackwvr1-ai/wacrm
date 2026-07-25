@@ -114,7 +114,7 @@ export async function getCurrentAccount(): Promise<AccountContext> {
     throw new UnauthorizedError();
   }
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("profiles")
     .select("account_id, account_role")
     .eq("user_id", user.id)
@@ -124,6 +124,32 @@ export async function getCurrentAccount(): Promise<AccountContext> {
     console.error("[getCurrentAccount] profile fetch error:", error);
     throw new ForbiddenError("Could not load account context");
   }
+
+  if (!data) {
+    // No profile row at all — handle_new_user's account+profile
+    // bootstrap failed (017_account_sharing.sql:659-689) and its
+    // EXCEPTION WHEN OTHERS swallowed the error, silently rolling
+    // back both inserts. The user is authenticated but orphaned.
+    // Self-heal once via recover_orphaned_profile (037), which
+    // replicates that bootstrap for the caller, then re-read the
+    // profile. If recovery itself fails, fall through to the
+    // ForbiddenError below exactly as before.
+    const { error: recoverErr } = await supabase.rpc(
+      "recover_orphaned_profile",
+    );
+    if (!recoverErr) {
+      ({ data, error } = await supabase
+        .from("profiles")
+        .select("account_id, account_role")
+        .eq("user_id", user.id)
+        .maybeSingle());
+      if (error) {
+        console.error("[getCurrentAccount] profile fetch error:", error);
+        throw new ForbiddenError("Could not load account context");
+      }
+    }
+  }
+
   if (!data || !data.account_id || !data.account_role) {
     // Pre-migration profile, or a manual insert that skipped the
     // signup trigger. The user is authenticated but the app has
