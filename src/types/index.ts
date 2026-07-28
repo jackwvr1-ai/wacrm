@@ -59,6 +59,27 @@ export interface Account {
   owner_user_id: string;
   created_at: string;
   updated_at: string;
+  /**
+   * Business profile fields (038_account_business_fields.sql). All
+   * NULLABLE, no DEFAULT — accounts created before that migration
+   * have every one of these unset.
+   */
+  business_type: string | null;
+  /** ISO 3166-1 alpha-2, e.g. "AR". DB CHECK validates form only. */
+  country_code: string | null;
+  /**
+   * IANA zone name (e.g. "America/Buenos_Aires"). No DB CHECK —
+   * Postgres CHECK constraints can't call `pg_timezone_names()`.
+   * Validated app-side against `Intl.supportedValuesOf('timeZone')`.
+   */
+  timezone: string | null;
+  /** ISO 639-1, optionally with a BCP-47 region, e.g. "es-AR". */
+  language_code: string | null;
+  logo_url: string | null;
+  /** The business's contact email — distinct from any profile's email. */
+  business_email: string | null;
+  business_phone: string | null;
+  address: string | null;
 }
 
 /**

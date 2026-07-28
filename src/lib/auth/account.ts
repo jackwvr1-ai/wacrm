@@ -29,7 +29,29 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
+import type { Account } from "@/types";
 import { hasMinRole, isAccountRole, type AccountRole } from "./roles";
+
+/**
+ * Lightweight account meta carried on every request context. Not the
+ * full `Account` row (skips owner_user_id / timestamps, which no
+ * caller of `getCurrentAccount` has needed) — just id/name plus the
+ * business-profile fields (038_account_business_fields.sql) the
+ * Settings → Organización UI reads.
+ */
+type AccountSummary = Pick<
+  Account,
+  | "id"
+  | "name"
+  | "business_type"
+  | "country_code"
+  | "timezone"
+  | "language_code"
+  | "logo_url"
+  | "business_email"
+  | "business_phone"
+  | "address"
+>;
 
 // ------------------------------------------------------------
 // Errors
@@ -87,8 +109,8 @@ export interface AccountContext {
   accountId: string;
   /** Caller's role within their account. */
   role: AccountRole;
-  /** Lightweight account meta — id + name. */
-  account: { id: string; name: string };
+  /** Lightweight account meta — see `AccountSummary`. */
+  account: AccountSummary;
 }
 
 /**
@@ -175,7 +197,9 @@ export async function getCurrentAccount(): Promise<AccountContext> {
   // RLS, so it stays robust against cache staleness and older schemas.
   const { data: account, error: accountErr } = await supabase
     .from("accounts")
-    .select("id, name")
+    .select(
+      "id, name, business_type, country_code, timezone, language_code, logo_url, business_email, business_phone, address",
+    )
     .eq("id", data.account_id)
     .maybeSingle();
 
@@ -194,7 +218,18 @@ export async function getCurrentAccount(): Promise<AccountContext> {
     userId: user.id,
     accountId: data.account_id,
     role: data.account_role,
-    account: { id: account.id, name: account.name },
+    account: {
+      id: account.id,
+      name: account.name,
+      business_type: account.business_type,
+      country_code: account.country_code,
+      timezone: account.timezone,
+      language_code: account.language_code,
+      logo_url: account.logo_url,
+      business_email: account.business_email,
+      business_phone: account.business_phone,
+      address: account.address,
+    },
   };
 }
 
