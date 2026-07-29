@@ -123,6 +123,27 @@
     },
     "emptyState": {
       "title": "Not enough data yet"
+    },
+    "onboarding": {
+      "title": "Getting started",
+      "subtitle": "{done} of {total} steps complete",
+      "dismiss": "Dismiss",
+      "allDoneTitle": "You're all set!",
+      "allDoneSubtitle": "Your account is ready to go.",
+      "organizationTitle": "Organization created",
+      "organizationFallback": "Your business",
+      "organizationAction": "Complete details",
+      "whatsappTitle": "Connect WhatsApp",
+      "whatsappConnectedSubtitle": "Connected — you can receive messages",
+      "whatsappPendingSubtitle": "Not connected yet — messages won't come in until you do",
+      "whatsappPendingAgentSubtitle": "Not connected yet — ask an admin to set it up",
+      "whatsappAction": "Connect WhatsApp",
+      "membersTitle": "Invite your team",
+      "membersOptional": "optional",
+      "teamInvitedSubtitle": "{count} {count, plural, =1 {member} other {members}} on this account",
+      "teamPendingSubtitle": "Just you so far — invite teammates anytime",
+      "inviteAction": "Invite teammate",
+      "viewTeamAction": "View team"
     }
   },
   "Inbox": {

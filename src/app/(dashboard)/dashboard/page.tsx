@@ -28,6 +28,7 @@ import type {
 
 import { MetricCard } from '@/components/dashboard/metric-card'
 import { SkeletonCard } from '@/components/dashboard/skeleton'
+import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist'
 import { QuickActions } from '@/components/dashboard/quick-actions'
 import { ConversationsChart } from '@/components/dashboard/conversations-chart'
 import { PipelineDonut } from '@/components/dashboard/pipeline-donut'
@@ -130,6 +131,10 @@ export default function DashboardPage() {
           {t('description')}
         </p>
       </div>
+
+      {/* Onboarding checklist — self-contained, renders nothing once
+          dismissed or fully complete-and-closed. */}
+      <OnboardingChecklist />
 
       {/* Metric cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
