@@ -1738,5 +1738,16 @@
       "reindexTooltip": "Re-embed all documents (e.g. after adding an embeddings key)",
       "loading": "Loading…"
     }
+  },
+  "Setup": {
+    "stepProgress": "Step {current} of {total}",
+    "title": "Welcome to wacrm",
+    "subtitle": "Let's get your account set up.",
+    "skip": "Skip for now",
+    "continue": "Continue",
+    "teamTitle": "Invite your team",
+    "teamSubtitle": "Add teammates now, or invite them later from Settings.",
+    "inviteAction": "Invite teammate",
+    "finish": "Finish"
   }
 }
