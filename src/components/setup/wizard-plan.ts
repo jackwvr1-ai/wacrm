@@ -26,6 +26,17 @@ export function isBusinessConfigured(
   return !!name && name !== GENERIC_ACCOUNT_NAME
 }
 
+// Fase 3.4b — misma decisión que `isBusinessConfigured`, leída al revés,
+// para que el layout del dashboard exprese la intención directamente
+// (`if (shouldRedirectToSetup(account)) redirect('/setup')`) sin negar la
+// condición inline. Ni el wizard ni el checklist deben duplicar esta regla:
+// todos comparten esta única fuente de verdad.
+export function shouldRedirectToSetup(
+  account: { name: string | null } | null | undefined,
+): boolean {
+  return !isBusinessConfigured(account)
+}
+
 // Los pasos opcionales (whatsapp, team) no tienen condición de avance: "Omitir"
 // y "Continuar" llaman a esta misma función, así que nunca pueden trabarse.
 export function getNextStepIndex(currentIndex: number, steps: WizardStepKey[]): number | null {
