@@ -36,7 +36,6 @@ function SignupPageInner() {
   const inviteToken = searchParams.get("invite");
 
   const [fullName, setFullName] = useState("");
-  const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -75,10 +74,6 @@ function SignupPageInner() {
       options: {
         data: {
           full_name: fullName,
-          // Only set for standalone signups — an invite redeems into
-          // the inviter's account and abandons this one, so there's
-          // no business name to carry here (see /join/[token]).
-          ...(inviteToken ? {} : { business_name: businessName }),
         },
         ...(emailRedirectTo ? { emailRedirectTo } : {}),
       },
@@ -174,23 +169,6 @@ function SignupPageInner() {
                 className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
               />
             </div>
-
-            {!inviteToken && (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="businessName" className="text-muted-foreground">
-                  Business name
-                </Label>
-                <Input
-                  id="businessName"
-                  type="text"
-                  placeholder="Acme Inc."
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  required
-                  className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
-                />
-              </div>
-            )}
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="email" className="text-muted-foreground">
